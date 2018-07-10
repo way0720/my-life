@@ -1,0 +1,94 @@
+stages:
+  - default
+
+before_script:
+  # use node v6.10.0
+  #
+  - nvm use v6.10.0
+  # unique hash of required dependencies
+  - PACKAGE_HASH=($(md5sum package.json))
+  # path to cache file
+  - DEPS_CACHE=~/cache/dependencies_${PACKAGE_HASH}.tar.gz
+  # Check if cache file exists and if not, create it
+  - if [ -f $DEPS_CACHE ];
+    then
+      tar zxf $DEPS_CACHE;
+    else
+      yarn install;
+      flock -x -w 300 ~/cache/mweb-gene.lock -c "tar zcf - ./node_modules > $DEPS_CACHE";
+    fi
+
+eslint:
+  stage:
+    default
+  script:
+  - node_modules/.bin/gulp lint
+  cache:
+    key: "yarn.lock"
+    paths:
+    - yarn.lock
+  except:
+  - master
+  - tags
+  tags:
+  - test_server_runner
+
+dev_deploy:
+  stage:
+    default
+  script:
+  - node_modules/.bin/webpack --config webpack/webpack.dev.config.js
+  - PROGRAM_NAME="mweb-gene-dev" sh /usr/local/scripts/test_runner.sh
+  cache:
+    key: "yarn.lock"
+    paths:
+    - yarn.lock
+  only:
+  - dev
+  tags:
+  - test_server_runner
+
+test_deploy:
+  stage:
+    default
+  script:
+  - node_modules/.bin/webpack --config webpack/webpack.test.config.js
+  - PROGRAM_NAME="mweb-gene" sh /usr/local/scripts/test_runner.sh
+  cache:
+    key: "yarn.lock"
+    paths:
+    - yarn.lock
+  only:
+  - /^test.*$/
+  tags:
+  - test_server_runner
+
+pre_deploy:
+  stage:
+    default
+  script:
+    - node_modules/.bin/webpack --config webpack/webpack.prod.config.js
+    - PROGRAM_NAME="mweb-gene" sh /usr/local/scripts/pre_runner.sh
+  cache:
+    key: "yarn.lock"
+    paths:
+    - yarn.lock
+  only:
+  - master
+  tags:
+  - test_server_runner
+
+prod_deploy:
+  stage:
+    default
+  script:
+    - node_modules/.bin/webpack --config webpack/webpack.prod.config.js
+    - PROGRAM_NAME="mweb-gene" VERSION=${CI_BUILD_TAG} sh /usr/local/scripts/prod_runner_auto.sh
+  cache:
+    key: "yarn.lock"
+    paths:
+    - yarn.lock
+  only:
+  - tags
+  tags:
+  - test_server_runner
